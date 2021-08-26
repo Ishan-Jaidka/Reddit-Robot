@@ -12,9 +12,9 @@ const synthesiaApiKey = process.env.synthesiaApiKey;
 const synthesiaApiRoot = process.env.synthesiaApiRoot;
 const redditApiRoot = process.env.redditApiRoot;
 
-const subreddit = "/r/showerthoughts";
-const time = "all";     // day/week/month/year/all
-const number = 0;
+const subreddit = "/r/TwoSentenceComedy";
+const time = "day";     // day/week/month/year/all
+const number = 3;
 const avatar = 'santa_costume1_cameraA';
 
 /*
@@ -51,8 +51,13 @@ async function getData(subreddit, time, number){
     try{
         //reddit.com/r/tifu/top.json?t=day
         const res = await axios.get(redditApiRoot + subreddit + '/top.json?t=' + time);
-        return res.data.data.children[number].data.title
-            + res.data.data.children[number].data.selftext;
+        let title = res.data.data.children[number].data.title;
+        let body = res.data.data.children[number].data.selftext;
+
+        //adds '.' to end of title if it doesn't already have one
+        if(title[title.length-1] != '.')
+            title += '.';
+        return title + ' ' + body;
     } catch (error) {
         console.log("Error: " + error);
         throw error;
@@ -71,12 +76,49 @@ async function createVideo(text, avatar){
             "actor": avatar, 
             "background": "green_screen"
         }] 
-      }, {
+    }, {
         headers: {
-          'Authorization': synthesiaApiKey,
-          'Content-Type': 'application/json'
+            'Authorization': synthesiaApiKey,
+            'Content-Type': 'application/json'
         }
-      });
+    });
+    console.log('video ID: ' + res.data.id);
 
-      console.log('request status: ' + res.data.status);
+    //polls Synthesia for video creation status
+    let status = await checkVideoStatus(res.data.id);
+    while(status.status == 'IN_PROGRESS'){
+        console.log('waiting...');
+        
+        //blocks thread for 20 seconds
+        const date = Date.now();
+        let currentDate = null;
+        do {
+            currentDate = Date.now();
+        } while (currentDate - date < 20000);
+
+        //rechecks status
+        status = await checkVideoStatus(res.data.id);
+        console.log(status.status);
+    }
+
+    //prints download link if creation completes successfully, otherwise prints creation status
+    if(status.status == 'COMPLETE')
+        console.log(status.download);
+    else console.log('something went wrong: ' + status.status);
+}
+
+/**
+ * Checks creation status of Synthesia video given video ID 
+ * @param {string} video_ID ID of Synthesia video
+ * @returns JSON object containing Synthesia response data of given video ID
+ */
+async function checkVideoStatus(video_ID){
+    let url = synthesiaApiRoot + '/' + video_ID;
+    let res = await axios.get(url, {
+        headers: {
+            'Authorization': synthesiaApiKey
+        }
+    });
+
+    return res.data;
 }
