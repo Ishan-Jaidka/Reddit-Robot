@@ -7,14 +7,16 @@
 
 require('dotenv').config();
 const axios = require('axios');
+const https = require ('https');
+const fs = require('fs');
 
 const synthesiaApiKey = process.env.synthesiaApiKey;
 const synthesiaApiRoot = process.env.synthesiaApiRoot;
 const redditApiRoot = process.env.redditApiRoot;
 
 const subreddit = "/r/TwoSentenceComedy";
-const time = "day";     // day/week/month/year/all
-const number = 3;
+const time = "all";     // day/week/month/year/all
+const number = 10;
 const avatar = 'santa_costume1_cameraA';
 
 /*
@@ -87,23 +89,48 @@ async function createVideo(text, avatar){
     //polls Synthesia for video creation status
     let status = await checkVideoStatus(res.data.id);
     while(status.status == 'IN_PROGRESS'){
-        console.log('waiting...');
+        //console.log('waiting...');
         
-        //blocks thread for 20 seconds
+        //blocks thread for 30 seconds
         const date = Date.now();
         let currentDate = null;
         do {
             currentDate = Date.now();
-        } while (currentDate - date < 20000);
+        } while (currentDate - date < 30000);
 
         //rechecks status
         status = await checkVideoStatus(res.data.id);
         console.log(status.status);
     }
 
-    //prints download link if creation completes successfully, otherwise prints creation status
-    if(status.status == 'COMPLETE')
-        console.log(status.download);
+    //downloads video to [workingdirectory]\videos\[date-videoID]\video.mp4 
+    //if creation completes successfully, otherwise prints creation status
+    if(status.status == 'COMPLETE'){
+        //console.log('Download URL: ' + status.download);
+
+        //creates directory if not exists
+        let dirname = 'videos\\' + new Date().toISOString().slice(0, 10) + '-' + res.data.id;
+        let filepath = __dirname + '\\' + dirname;
+        fs.mkdirSync(filepath, {recursive: true})
+        filepath += '\\' + 'video.mp4';
+
+        //downloads video to specified directory, aborts request after 2 minutes (deprecated?)
+        const downloadRequest = https.get(status.download, (response) => {
+            if(response.statusCode === 200) {
+                console.log("Downloading File to: " + filepath);
+                let file = fs.createWriteStream(filepath);
+                response.pipe(file);
+            } else
+                console.log("Something went wrong; status code: " + response.statusCode);
+            
+            downloadRequest.setTimeout(120000, () => {
+                downloadRequest.abort();
+                console.log("Request aborted");
+            })
+        });
+        
+    }
+        
     else console.log('something went wrong: ' + status.status);
 }
 
